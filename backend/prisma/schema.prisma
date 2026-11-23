@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  REQUESTER
+  AREA_OWNER
+  SAFETY_OFFICER
+  ADMIN
+}
+
+enum PermitType {
+  HOT_WORK
+  CONFINED_SPACE_ENTRY
+  WORKING_AT_HEIGHT
+  ELECTRICAL_ISOLATION_LOTO
+}
+
+enum PermitStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  REJECTED
+  CLOSED
+  CLOSED_VERIFIED
+  CANCELLED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  areaId       String?
+  isActive     Boolean  @default(true)
+
+  area             Area?      @relation(fields: [areaId], references: [id])
+  requestedPermits Permit[]   @relation("Requester")
+  approvals        Approval[] @relation("Approver")
+  auditLogs        AuditLog[]
+  workLogs         WorkLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Plant {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  areas     Area[]
+  createdAt DateTime @default(now())
+}
+
+model Area {
+  id      String @id @default(cuid())
+  name    String
+  plantId String
+
+  plant     Plant       @relation(fields: [plantId], references: [id])
+  equipment Equipment[]
+  users     User[]
+  permits   Permit[]
+}
+
+model Equipment {
+  id     String @id @default(cuid())
+  name   String
+  tag    String @unique
+  areaId String
+
+  area    Area     @relation(fields: [areaId], references: [id])
+  permits Permit[]
+}
+
+model Permit {
+  id           String       @id @default(cuid())
+  permitNumber String       @unique
+  permitType   PermitType
+  status       PermitStatus @default(DRAFT)
+
+  requesterId String
+  requester   User   @relation("Requester", fields: [requesterId], references: [id])
+
+  contractorTeam  String
+  workDescription String
+
+  plantId     String
+  areaId      String
+  equipmentId String
+
+  area      Area      @relation(fields: [areaId], references: [id])
+  equipment Equipment @relation(fields: [equipmentId], references: [id])
+
+  plannedStart DateTime
+  plannedEnd   DateTime
+
+  hazards     String[]
+  ppe         String[]
+  precautions Json
+  details     Json
+
+  completionNotes String?
+  completedAt     DateTime?
+  verifiedAt      DateTime?
+
+  approvals Approval[]
+  auditLogs AuditLog[]
+  workLogs  WorkLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([permitType])
+  @@index([areaId])
+  @@index([plannedStart, plannedEnd])
+}
+
+model Approval {
+  id         String         @id @default(cuid())
+  permitId   String
+  approverId String
+  status     ApprovalStatus @default(PENDING)
+  comment    String?
+  decidedAt  DateTime?
+
+  permit   Permit @relation(fields: [permitId], references: [id])
+  approver User   @relation("Approver", fields: [approverId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([permitId, approverId])
+}
+
+model AuditLog {
+  id        String  @id @default(cuid())
+  permitId  String
+  actorId   String?
+  action    String
+  field     String?
+  fromValue Json?
+  toValue   Json?
+  comment   String?
+
+  permit Permit @relation(fields: [permitId], references: [id])
+  actor  User?  @relation(fields: [actorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([permitId, createdAt])
+}
+
+model WorkLog {
+  id          String   @id @default(cuid())
+  permitId    String
+  userId      String
+  description String
+  loggedAt    DateTime @default(now())
+
+  permit Permit @relation(fields: [permitId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+}
